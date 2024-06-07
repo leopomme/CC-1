@@ -7,10 +7,8 @@ import chess.engine
 from utils import load_model
 import numpy as np
 
-
 class ChessRecognizer:
     def __init__(self, model_path='best_model.pth'):
-        print("Initializing ChessRecognizer")
         self.model = load_model(model_path)
         self.transform = transforms.Compose([
             transforms.Resize((64, 64)),
@@ -19,30 +17,29 @@ class ChessRecognizer:
         self.class_names = ['black_bishop', 'black_king', 'black_queen', 'black_knight', 'black_rook',
                             'black_pawn', 'white_bishop', 'white_king', 'white_queen', 'white_knight',
                             'white_rook', 'white_pawn', 'empty']
+        self.grid = None  # Cache the grid coordinates
 
     def classify_chessboard(self, image_path):
-        print("Classifying chessboard")
         image = cv2.imread(image_path)
         results, grid = self._detect_chessboard(image)
         return results, grid
 
     def _detect_chessboard(self, frame):
-        print("Detecting chessboard")
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         edges = cv2.Canny(gray, 50, 150, apertureSize=3)
         lines = cv2.HoughLines(edges, 1, np.pi / 180, 300)
 
-        if lines is not None:
-            print(f"Found {len(lines)} lines")
+        if lines is not None and self.grid is None:
             intersections = self._find_intersections(lines, frame.shape)
             if len(intersections) >= 64:
-                grid = self._sort_intersections(intersections)
-                results = self._classify_pieces(frame, grid)
-                return results, grid
+                self.grid = self._sort_intersections(intersections)
+        
+        if self.grid is not None:
+            results = self._classify_pieces(frame, self.grid)
+            return results, self.grid
         return {}, []
 
     def _find_intersections(self, lines, shape):
-        print("Finding intersections")
         intersections = []
         for rho, theta in lines[:, 0]:
             a = np.cos(theta)
@@ -63,7 +60,6 @@ class ChessRecognizer:
         return sorted(set(intersections))
 
     def _sort_intersections(self, intersections):
-        print("Sorting intersections")
         intersections.sort(key=lambda x: (x[1], x[0]))  # Sort by y, then by x
         grid = []
         grid_size = 9  # 8x8 board has 9 lines
@@ -73,7 +69,6 @@ class ChessRecognizer:
         return grid
 
     def _classify_pieces(self, frame, grid):
-        print("Classifying pieces")
         results = {}
         for i in range(8):
             for j in range(8):
@@ -84,7 +79,7 @@ class ChessRecognizer:
 
                 # Extract the cell image
                 cell_image = frame[top_left[1]:bottom_left[1], top_left[0]:top_right[0]]
-                cell_image_rgb = cv2.cvtColor(cell_image, cv2.COLOR_BGRA2BGR)  # Ensure 3 channels
+                cell_image_rgb = cv2.cvtColor(cell_image, cv2.COLOR_BGR2RGB)  # Ensure 3 channels
                 cell_image_pil = TF.to_pil_image(cell_image_rgb)
                 image_tensor = self.transform(cell_image_pil).unsqueeze(0)
 
@@ -95,8 +90,7 @@ class ChessRecognizer:
 
         return results
 
-    def setup_board(self, results):
-        print("Setting up the board")
+    def setup_board(self, results, side):
         board = chess.Board()
         board.clear()
 
@@ -114,8 +108,8 @@ class ChessRecognizer:
             if max_prob_piece != 'empty':
                 piece = piece_map[max_prob_piece]
                 color = color_map[max_prob_piece]
-                rank = 7 - coord[0]
-                file = coord[1]
+                rank = 7 - coord[0] if side == "white" else coord[0]
+                file = coord[1] if side == "white" else 7 - coord[1]
                 square = chess.square(file, rank)
                 board.set_piece_at(square, chess.Piece(piece, color))
 

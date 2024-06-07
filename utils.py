@@ -30,11 +30,13 @@ def select_screen_region():
     root.mainloop()
     return selector.rect_coords
 
-def draw_arrows_on_frame(frame, best_moves_current, best_moves_other, board, grid):
-    print("Drawing arrows on frame")
+def draw_arrows_on_frame(frame, best_moves_current, best_moves_other, board, grid, side):
     def get_square_center(rank, file):
-        top_left = grid[7-rank][file]
-        bottom_right = grid[7-rank+1][file+1]
+        if side == "black":
+            rank = 7 - rank
+            file = 7 - file
+        top_left = grid[7 - rank][file]
+        bottom_right = grid[7 - rank + 1][file + 1]
         center_x = (top_left[0] + bottom_right[0]) // 2
         center_y = (top_left[1] + bottom_right[1]) // 2
         return center_x, center_y
@@ -45,7 +47,7 @@ def draw_arrows_on_frame(frame, best_moves_current, best_moves_other, board, gri
         from_center = get_square_center(chess.square_rank(from_square), chess.square_file(from_square))
         to_center = get_square_center(chess.square_rank(to_square), chess.square_file(to_square))
         color = (0, 255, 0)
-        thickness = max(5 - i, 1)
+        thickness = max(15 - 3*i, 1)
         cv2.arrowedLine(frame, from_center, to_center, color, thickness, tipLength=0.3)
 
     for i, move in enumerate(best_moves_other):
@@ -54,10 +56,11 @@ def draw_arrows_on_frame(frame, best_moves_current, best_moves_other, board, gri
         from_center = get_square_center(chess.square_rank(from_square), chess.square_file(from_square))
         to_center = get_square_center(chess.square_rank(to_square), chess.square_file(to_square))
         color = (0, 0, 255)
-        thickness = max(5 - i, 1)
+        thickness = max(15 - 3*i, 1)
         cv2.arrowedLine(frame, from_center, to_center, color, thickness, tipLength=0.3)
 
     return frame
+
 
 class ScreenRegionSelector:
     def __init__(self, root):
@@ -94,7 +97,6 @@ class ScreenRegionSelector:
         end_x = self.canvas.canvasx(event.x)
         end_y = self.canvas.canvasy(event.y)
         self.rect_coords = (int(self.start_x), int(self.start_y), int(end_x), int(end_y))
-        print(f"Selected region: {self.rect_coords}")
         self.quit()
     
     def quit(self, event=None):

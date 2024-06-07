@@ -4,7 +4,6 @@ from screen_capture import ScreenCapture
 from chess_recognition import ChessRecognizer
 from utils import select_screen_region
 
-
 class ChessAssistantApp:
     def __init__(self, root):
         self.root = root
@@ -38,12 +37,22 @@ class ChessAssistantApp:
 
         self.monitor = None
         self.screen_capture = None
+        self.first_assist = True
 
     def select_zone(self):
         self.monitor = select_screen_region()
-        self.screen_capture = ScreenCapture(self.monitor, self.chess_recognizer, self.canvas)
+        if self.monitor:
+            self.screen_capture = ScreenCapture(self.monitor, self.chess_recognizer, self.canvas)
+            print(f"Selected region: {self.monitor}")
+        else:
+            print("No region selected")
 
     def assist(self):
+        if self.first_assist:
+            self.first_assist = False
+            self.quit_button.invoke()
+            self.root.after(100, self.assist) 
+            return
         if self.screen_capture:
             self.screen_capture.side = self.side_var.get()
             self.screen_capture.capture_and_process()
