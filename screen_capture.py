@@ -33,6 +33,7 @@ class ScreenCapture:
         results, grid = self.chess_recognizer._detect_chessboard(frame)
         if results:
             board = self.chess_recognizer.setup_board(results, self.side)
+            print(board)
             self.ensure_engine_running()
             try:
                 best_moves_current = self.get_best_moves(self.engine, board)
@@ -61,7 +62,7 @@ class ScreenCapture:
 
     def get_best_moves(self, engine, board):
         try:
-            limit = chess.engine.Limit(time=1.0, depth=5)
+            limit = chess.engine.Limit(time=2.0, depth=10)
             info = engine.analyse(board, limit, multipv=5)
             moves = []
             for i in range(len(info)):
