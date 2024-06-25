@@ -62,7 +62,7 @@ class ScreenCapture:
 
     def get_best_moves(self, engine, board):
         try:
-            limit = chess.engine.Limit(time=2.0, depth=10)
+            limit = chess.engine.Limit(time=5.0, depth=5)
             info = engine.analyse(board, limit, multipv=5)
             moves = []
             for i in range(len(info)):
@@ -78,7 +78,7 @@ class ScreenCapture:
         except Exception as e:
             logging.error(f"Unexpected error during analyse: {e}")
             try:
-                result = engine.play(board, chess.engine.Limit(time=2.0))
+                result = engine.play(board, chess.engine.Limit(time=5.0))
                 if result.move:
                     return [result.move]
             except chess.engine.EngineTerminatedError as e:
