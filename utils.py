@@ -5,6 +5,7 @@ import numpy as np
 import chess
 import chess.engine
 import tkinter as tk
+import math
 
 def load_model(model_path):
     print("Loading model")
@@ -23,15 +24,21 @@ def has_significant_change(frame1, frame2, threshold=30):
     print(f"Non-zero pixel count: {non_zero_count}")
     return non_zero_count > threshold
 
-def select_screen_region():
-    import tkinter as tk
-    root = tk.Tk()
-    selector = ScreenRegionSelector(root)
-    root.mainloop()
-    return selector.rect_coords
+import math
+import cv2
+import numpy as np
+import chess
 
-def draw_arrows_on_frame(frame, best_moves_current, best_moves_other, board, grid, side):
+def draw_arrows_on_frame(frame, best_moves_current, best_moves_other, board, grid, side, alpha=0.6):
+    """
+    Draws arrows for the top three moves for both players.
+    Green arrows indicate your moves and red arrows indicate your opponent's moves.
+    Arrow thickness and arrowhead size are scaled dynamically.
+    """
+    overlay = frame.copy()
+
     def get_square_center(rank, file):
+        # Adjust coordinate mapping based on selected side
         if side == "black":
             rank = 7 - rank
             file = 7 - file
@@ -41,63 +48,148 @@ def draw_arrows_on_frame(frame, best_moves_current, best_moves_other, board, gri
         center_y = (top_left[1] + bottom_right[1]) // 2
         return center_x, center_y
 
-    for i, move in enumerate(best_moves_current):
+    # Draw current player's moves (green)
+    for i, move in enumerate(best_moves_current[:3]):
         from_square = move.from_square
         to_square = move.to_square
         from_center = get_square_center(chess.square_rank(from_square), chess.square_file(from_square))
         to_center = get_square_center(chess.square_rank(to_square), chess.square_file(to_square))
-        color = (0, 255, 0)
-        thickness = max(15 - 3*i, 1)
-        cv2.arrowedLine(frame, from_center, to_center, color, thickness, tipLength=0.3)
+        thickness = max(10 - i * 3, 3)  # Best move has the thickest line
+        if i == 0:
+            color = (0, 255, 0)       # Bright green
+        elif i == 1:
+            color = (50, 205, 50)     # Medium green
+        else:
+            color = (100, 255, 100)   # Lighter green
+        overlay = draw_custom_arrowhead(overlay, from_center, to_center, color, thickness)
 
-    for i, move in enumerate(best_moves_other):
+    # Draw opponent's moves (red)
+    for i, move in enumerate(best_moves_other[:3]):
         from_square = move.from_square
         to_square = move.to_square
         from_center = get_square_center(chess.square_rank(from_square), chess.square_file(from_square))
         to_center = get_square_center(chess.square_rank(to_square), chess.square_file(to_square))
-        color = (0, 0, 255)
-        thickness = max(15 - 3*i, 1)
-        cv2.arrowedLine(frame, from_center, to_center, color, thickness, tipLength=0.3)
+        thickness = max(10 - i * 3, 3)
+        if i == 0:
+            color = (0, 0, 255)       # Bright red
+        elif i == 1:
+            color = (50, 50, 205)     # Medium red
+        else:
+            color = (100, 100, 255)   # Lighter red
+        overlay = draw_custom_arrowhead(overlay, from_center, to_center, color, thickness)
 
-    return frame
+    return cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0)
+
+import math
+import cv2
+import numpy as np
+
+def draw_custom_arrowhead(image, from_pt, to_pt, color, thickness):
+    dx = to_pt[0] - from_pt[0]
+    dy = to_pt[1] - from_pt[1]
+    length = math.sqrt(dx * dx + dy * dy)
+    if length == 0:
+        return image  # Avoid division by zero
+
+    ux = dx / length
+    uy = dy / length
+
+    # Scale arrowhead size relative to thickness:
+    arrow_head_length = max(20, thickness * 2)
+    arrow_head_width = max(10, thickness * 1.5)
+
+    # Calculate the base of the arrowhead
+    base_x = to_pt[0] - arrow_head_length * ux
+    base_y = to_pt[1] - arrow_head_length * uy
+
+    # Perpendicular vector for arrowhead width
+    perp_x = -uy
+    perp_y = ux
+
+    left_x = base_x + (arrow_head_width / 2.0) * perp_x
+    left_y = base_y + (arrow_head_width / 2.0) * perp_y
+    right_x = base_x - (arrow_head_width / 2.0) * perp_x
+    right_y = base_y - (arrow_head_width / 2.0) * perp_y
+
+    arrow_points = np.array([
+        [int(to_pt[0]), int(to_pt[1])],
+        [int(left_x), int(left_y)],
+        [int(right_x), int(right_y)]
+    ], dtype=np.int32)
+
+    cv2.fillPoly(image, [arrow_points], color)
+    cv2.line(image, from_pt, to_pt, color, thickness, lineType=cv2.LINE_AA)
+    return image
 
 
-class ScreenRegionSelector:
-    def __init__(self, root):
-        self.root = root
-        self.root.attributes("-fullscreen", True)
-        self.root.attributes("-alpha", 0.3)
-        self.root.bind("<Escape>", self.quit)
-        
-        self.canvas = tk.Canvas(self.root, cursor="cross", bg="gray")
-        self.canvas.pack(fill=tk.BOTH, expand=True)
-        
-        self.start_x = None
-        self.start_y = None
-        self.rect = None
-        self.rect_coords = None
-        
-        self.canvas.bind("<ButtonPress-1>", self.on_button_press)
-        self.canvas.bind("<B1-Motion>", self.on_move_press)
-        self.canvas.bind("<ButtonRelease-1>", self.on_button_release)
+def select_screen_region():
+    root = tk.Tk()
+    # Set the window to full screen and semi-transparent
+    root.attributes("-fullscreen", True)
+    root.attributes("-alpha", 0.3)
+    root.configure(background='gray')
     
-    def on_button_press(self, event):
-        self.start_x = self.canvas.canvasx(event.x)
-        self.start_y = self.canvas.canvasy(event.y)
-        if self.rect:
-            self.canvas.delete(self.rect)
-        self.rect = self.canvas.create_rectangle(self.start_x, self.start_y, self.start_x, self.start_y, outline='red', width=2)
+    rect_coords = [None]  # Will hold the final (x1, y1, x2, y2)
+    start_x = [None]
+    start_y = [None]
+    rect = [None]
     
-    def on_move_press(self, event):
-        cur_x = self.canvas.canvasx(event.x)
-        cur_y = self.canvas.canvasy(event.y)
-        self.canvas.coords(self.rect, self.start_x, self.start_y, cur_x, cur_y)
+    canvas = tk.Canvas(root, bg="gray")
+    canvas.pack(fill=tk.BOTH, expand=True)
     
-    def on_button_release(self, event):
-        end_x = self.canvas.canvasx(event.x)
-        end_y = self.canvas.canvasy(event.y)
-        self.rect_coords = (int(self.start_x), int(self.start_y), int(end_x), int(end_y))
-        self.quit()
+    def on_button_press(event):
+        start_x[0] = canvas.canvasx(event.x)
+        start_y[0] = canvas.canvasy(event.y)
+        if rect[0]:
+            canvas.delete(rect[0])
+        rect[0] = canvas.create_rectangle(start_x[0], start_y[0],
+                                          start_x[0], start_y[0],
+                                          outline='red', width=2)
+        print("Button pressed at:", start_x[0], start_y[0])
     
-    def quit(self, event=None):
-        self.root.destroy()
+    def on_move_press(event):
+        cur_x = canvas.canvasx(event.x)
+        cur_y = canvas.canvasy(event.y)
+        if rect[0]:
+            canvas.coords(rect[0], start_x[0], start_y[0], cur_x, cur_y)
+    
+    def on_button_release(event):
+        end_x = canvas.canvasx(event.x)
+        end_y = canvas.canvasy(event.y)
+        rect_coords[0] = (int(start_x[0]), int(start_y[0]), int(end_x), int(end_y))
+        print("Button released at:", end_x, end_y)
+        print("Region selected:", rect_coords[0])
+        # Quit and then destroy the window
+        root.quit()
+    
+    # Bind the mouse events to the canvas...
+    canvas.bind("<ButtonPress-1>", on_button_press)
+    canvas.bind("<B1-Motion>", on_move_press)
+    canvas.bind("<ButtonRelease-1>", on_button_release)
+    # Also bind the button release to the root (in case the event escapes the canvas)
+    root.bind("<ButtonRelease-1>", on_button_release)
+    
+    root.mainloop()
+    root.destroy()  # Ensure the window is fully closed after mainloop exits
+    return rect_coords[0]
+
+def create_overlay_window(monitor):
+    """Creates a borderless overlay window that covers the selected region
+    and makes its background transparent so only the drawn arrows are visible."""
+    overlay = tk.Toplevel()
+    overlay.overrideredirect(True)  # Remove window borders
+    overlay.attributes("-topmost", True)
+    # Position the overlay at the same coordinates as the selected region
+    x, y, x2, y2 = monitor
+    width = x2 - x
+    height = y2 - y
+    overlay.geometry(f"{width}x{height}+{x}+{y}")
+    
+    # Set the background to a color that we make transparent (e.g., white)
+    overlay.configure(bg='white')
+    overlay.attributes("-transparentcolor", "white")
+    
+    # Create a canvas for drawing
+    canvas = tk.Canvas(overlay, width=width, height=height, highlightthickness=0, bg="white")
+    canvas.pack()
+    return overlay, canvas
